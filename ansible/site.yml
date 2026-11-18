@@ -1,0 +1,6 @@
+---
+- name: Postfix SMTP relay with Docker Compose
+  hosts: relay
+  roles:
+    - role: docker_engine
+    - role: postfix_relay

@@ -1,0 +1,54 @@
+# {{ ansible_managed }}
+services:
+  smtp:
+    image: {{ postfix_relay_image }}
+    container_name: {{ postfix_relay_container_name }}
+    restart: always
+    environment:
+      - SASL_Passwds=/etc/postfix/sasl/sasl_passwds
+      - POSTFIX_myhostname={{ postfix_relay_myhostname }}
+      - OPENDKIM_DOMAINS={{ postfix_relay_dkim_domains }}
+      - POSTFIX_smtpd_sasl_auth_enable=yes
+      - POSTFIX_cyrus_sasl_config_path=/etc/postfix/sasl
+      - POSTFIX_smtpd_sasl_security_options=noanonymous
+      - POSTFIX_smtpd_relay_restrictions=permit_sasl_authenticated,reject
+      - POSTFIX_smtpd_tls_cert_file=/etc/postfix/tls/cert.pem
+      - POSTFIX_smtpd_tls_key_file=/etc/postfix/tls/key.pem
+      - POSTFIX_smtpd_tls_security_level=may
+      - POSTFIX_smtpd_tls_auth_only=yes
+      - TZ={{ postfix_relay_timezone }}
+      - RSYSLOG_LOG_TO_FILE=yes
+      - RSYSLOG_TIMESTAMP=yes
+{% if postfix_relay_rsyslog_remote_host | length > 0 %}
+      - RSYSLOG_REMOTE_HOST={{ postfix_relay_rsyslog_remote_host }}
+      - RSYSLOG_REMOTE_PORT={{ postfix_relay_rsyslog_remote_port }}
+{% endif %}
+{% for entry in postfix_relay_extra_env %}
+      - {{ entry }}
+{% endfor %}
+    volumes:
+      - ./passwd_file/passwd_file:/etc/postfix/sasl/sasl_passwds
+      - opendkim_keys:/etc/opendkim/keys
+      - var_log:/var/log
+      - ./tls/cert.pem:/etc/postfix/tls/cert.pem:ro
+      - ./tls/key.pem:/etc/postfix/tls/key.pem:ro
+    ports:
+      - "{{ postfix_relay_smtp_port }}:25"
+    networks:
+      - {{ postfix_relay_network }}
+    healthcheck:
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/25' || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+networks:
+  {{ postfix_relay_network }}:
+    external: true
+
+volumes:
+  opendkim_keys:
+    external: true
+  var_log:
+    external: true

@@ -1,0 +1,14 @@
+---
+# Values from the post. Secrets live in vault.yml (see vault.yml.example).
+postfix_relay_myhostname: smtp.example.com
+# Space-separated list of the sender domains OpenDKIM signs for.
+postfix_relay_dkim_domains: smtp.example.com
+postfix_relay_timezone: Europe/Amsterdam
+# Remote syslog target; leave empty to log only to the container's /var/log.
+postfix_relay_rsyslog_remote_host: syslog.example.com
+postfix_relay_rsyslog_remote_port: 514
+
+# SASL users that may relay. The password comes from the vault.
+postfix_relay_sasl_users:
+  - name: myuser
+    password: "{{ vault_postfix_relay_myuser_password }}"

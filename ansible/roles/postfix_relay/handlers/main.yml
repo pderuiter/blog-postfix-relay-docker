@@ -1,0 +1,5 @@
+---
+- name: Restart postfix-relay
+  community.docker.docker_compose_v2:
+    project_src: "{{ postfix_relay_dir }}"
+    state: restarted

@@ -1,0 +1,28 @@
+---
+# Project directory with docker-compose.yml, passwd_file/ and tls/.
+postfix_relay_dir: /opt/postfix-relay
+postfix_relay_image: mwader/postfix-relay
+postfix_relay_container_name: postfix-relay
+postfix_relay_smtp_port: 25
+# External network the relay joins (the post shares it with Traefik).
+postfix_relay_network: traefik-proxy
+
+postfix_relay_myhostname: smtp.example.com
+postfix_relay_dkim_domains: "{{ postfix_relay_myhostname }}"
+postfix_relay_timezone: Europe/Amsterdam
+postfix_relay_rsyslog_remote_host: ""
+postfix_relay_rsyslog_remote_port: 514
+
+# [{name: ..., password: ...}]; hashed with mkpasswd -m sha-512 inside the image.
+postfix_relay_sasl_users: []
+
+# TLS for client connections. With postfix_relay_tls_self_signed the role creates a
+# self-signed certificate (as in the post); otherwise it copies the two files below
+# from the controller.
+postfix_relay_tls_self_signed: true
+postfix_relay_tls_cert_src: ""
+postfix_relay_tls_key_src: ""
+
+# Extra POSTFIX_* / other environment entries for the container, e.g.
+# ["POSTFIX_relayhost=[smarthost.example.com]:587"].
+postfix_relay_extra_env: []

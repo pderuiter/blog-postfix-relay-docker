@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: postfix_relay
+  author: Patrick de Ruiter
+  description: Postfix SMTP relay (mwader/postfix-relay) with SASL, STARTTLS and DKIM on Docker Compose
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

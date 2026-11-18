@@ -1,0 +1,130 @@
+---
+- name: Create the project directories
+  ansible.builtin.file:
+    path: "{{ postfix_relay_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - ""
+    - passwd_file
+    - tls
+
+- name: Create the external network
+  community.docker.docker_network:
+    name: "{{ postfix_relay_network }}"
+    state: present
+
+- name: Create the external volumes
+  community.docker.docker_volume:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - opendkim_keys
+    - var_log
+
+# mkpasswd with a salt derived from the user name and password, so the hash
+# (and with it the passwd file) only changes when the password changes.
+- name: Hash the SASL passwords with mkpasswd from the image
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - "{{ postfix_relay_image }}"
+      - mkpasswd
+      - -m
+      - sha-512
+      - -S
+      - "{{ (item.name ~ ':' ~ item.password) | hash('sha256') | truncate(16, True, '') }}"
+      - "{{ item.password }}"
+  loop: "{{ postfix_relay_sasl_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: postfix_relay_hashes
+  changed_when: false
+  no_log: true
+
+- name: Write the SASL password file
+  ansible.builtin.copy:
+    content: |
+      {% for result in postfix_relay_hashes.results %}
+      {{ result.item.name }}:{{ result.stdout }}
+      {% endfor %}
+    dest: "{{ postfix_relay_dir }}/passwd_file/passwd_file"
+    owner: root
+    group: root
+    mode: "0644"
+  no_log: true
+  notify: Restart postfix-relay
+
+- name: Create a self-signed certificate for {{ postfix_relay_myhostname }}
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - rsa:2048
+      - -nodes
+      - -days
+      - "365"
+      - -subj
+      - "/CN={{ postfix_relay_myhostname }}"
+      - -keyout
+      - "{{ postfix_relay_dir }}/tls/key.pem"
+      - -out
+      - "{{ postfix_relay_dir }}/tls/cert.pem"
+    creates: "{{ postfix_relay_dir }}/tls/cert.pem"
+  when: postfix_relay_tls_self_signed
+  notify: Restart postfix-relay
+
+- name: Copy the TLS certificate and key
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ postfix_relay_dir }}/tls/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { src: "{{ postfix_relay_tls_cert_src }}", dest: cert.pem }
+    - { src: "{{ postfix_relay_tls_key_src }}", dest: key.pem }
+  loop_control:
+    label: "{{ item.dest }}"
+  when: not postfix_relay_tls_self_signed
+  notify: Restart postfix-relay
+
+# The post uses chmod 644: the files are bind-mounted read-only and Postfix reads
+# them as root before dropping privileges.
+- name: Set the certificate file permissions
+  ansible.builtin.file:
+    path: "{{ postfix_relay_dir }}/tls/{{ item }}"
+    mode: "0644"
+  loop:
+    - cert.pem
+    - key.pem
+
+- name: Write docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ postfix_relay_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start the relay
+  community.docker.docker_compose_v2:
+    project_src: "{{ postfix_relay_dir }}"
+    state: present
+    wait: true
+    wait_timeout: 180
+
+- name: Read the DKIM DNS record
+  ansible.builtin.command: docker exec {{ postfix_relay_container_name }} sh -c 'cat /etc/opendkim/keys/*/*.txt'
+  register: postfix_relay_dkim
+  changed_when: false
+
+- name: Show the DKIM record to publish in DNS
+  ansible.builtin.debug:
+    msg: "{{ postfix_relay_dkim.stdout_lines }}"
